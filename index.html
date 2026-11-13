@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atrapada doble de Starship</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: escena + gráfico de motores a la izquierda; mapa de motores y línea de tiempo a la derecha.
+     Una sola columna en pantallas angostas. Un solo tema por decisión: atardecer en Starbase. */
+  --bg:#0c121d;
+  --panel:#141d2c;
+  --line:#28354b;
+  --ink:#e8edf5;
+  --muted:#93a2b9;
+  --accent:#ffb14a;   /* motor encendido */
+  --ship:#7fc4ff;     /* eventos de la Ship */
+  --ok:#74d4a8;
+  --font-display:"Chakra Petch","Trebuchet MS",sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1220px;margin:0 auto;padding:20px 16px 32px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
+h1{font-family:var(--font-display);font-weight:700;font-size:26px;line-height:1.15;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:64ch}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:600 14px var(--font-body);color:var(--muted);background:transparent;border:0;padding:9px 14px;cursor:pointer;text-align:left}
+.seg button small{display:block;font:400 12px var(--font-mono);color:var(--muted)}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:16px;align-items:start}
+.stage{display:flex;flex-direction:column;gap:10px;min-width:0}
+.view{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#05070c;aspect-ratio:16/10}
+canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 12px;background:rgba(8,12,20,.8);border-top:1px solid rgba(147,162,185,.3);pointer-events:none}
+.hud .side{display:flex;align-items:center;gap:10px;min-width:0}
+.hud .side.right{justify-content:flex-end}
+.hud canvas{width:78px;height:78px;flex:none}
+.hud dl{display:grid;grid-template-columns:auto auto;gap:1px 12px;align-items:baseline;margin:0}
+.hud dt{font:600 11px var(--font-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hud dd{margin:0;font:500 14px var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.hud dd.who{color:var(--accent)}
+.hud .right dd.who{color:var(--ship)}
+.hud .mid{display:flex;flex-direction:column;align-items:center;text-align:center;max-width:240px}
+.hud .mid b{font:700 24px var(--font-display);font-variant-numeric:tabular-nums;line-height:1.1}
+.hud .mid span{font:500 12px var(--font-body);color:#d5dcea;text-wrap:balance}
+.chart{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:8px 10px 6px}
+.chart h2,.card h2{font:600 13px var(--font-body);color:var(--muted);margin:0 0 6px}
+.chart canvas{height:96px;cursor:pointer;touch-action:none}
+.chart input{width:100%;margin:6px 0 0;accent-color:var(--accent)}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.btn{font:600 14px var(--font-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a1205;min-width:104px}
+.btn:hover{filter:brightness(1.12)}
+select{font:500 14px var(--font-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.telemetry{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
+.telemetry div{background:var(--panel);padding:10px 12px;min-width:0}
+.telemetry dt{font-size:12px;color:var(--muted)}
+.telemetry dd{margin:2px 0 0;font:500 16px var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+aside{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.now h3{font:700 17px var(--font-display);margin:0 0 2px}
+.now .when{font:500 13px var(--font-mono);color:var(--accent);margin:0 0 6px}
+.now p.text{margin:0;color:#cbd4e2;min-height:6em}
+ol.events{list-style:none;margin:0;padding:0;max-height:330px;overflow:auto;position:relative}
+ol.events button{width:100%;display:grid;grid-template-columns:74px 28px 1fr;gap:8px;align-items:baseline;text-align:left;background:transparent;border:0;border-left:2px solid transparent;color:var(--muted);font:500 13.5px var(--font-body);padding:6px 6px;cursor:pointer}
+ol.events time{font:400 12px var(--font-mono);font-variant-numeric:tabular-nums}
+ol.events .veh{font:500 11px var(--font-mono);text-align:center;border-radius:3px;padding:0 2px;color:#1a1205;background:var(--accent)}
+ol.events .veh.s{background:var(--ship);color:#06121e}
+ol.events .veh.bs{background:var(--muted);color:#0c121d}
+ol.events em{font:400 11px var(--font-mono);font-style:normal;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-left:6px;white-space:nowrap}
+ol.events button:hover{color:var(--ink)}
+ol.events li.done button{color:#c3cddc}
+ol.events li.now button{color:var(--ink);background:#1c2840;border-left-color:var(--accent)}
+.note{color:var(--muted);font-size:13px;max-width:86ch;margin:0}
+.note a{color:var(--ink)}
+@media (max-width:900px){
+  main{grid-template-columns:1fr}
+  .view{aspect-ratio:4/5}
+  .hud{gap:6px;padding:6px 8px}
+  .hud canvas{width:46px;height:46px}
+  .hud .side{gap:6px}
+  .hud dl{gap:0 6px}
+  .hud dt{font-size:9px;letter-spacing:0}
+  .hud dd{font-size:11px}
+  .hud .mid b{font-size:16px}
+  .hud .mid span{display:none}
+  .telemetry dd{font-size:13px;white-space:normal}
+  h1{font-size:22px}
+  .now p.text{min-height:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Atrapada doble de Starship, Vuelo 15</h1>
+      <p class="sub">El plan de vuelo segundo a segundo: qué motores están encendidos, cuáles se apagan y cuándo, hasta que la torre agarra cada etapa.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Etapa a seguir">
+      <button id="tab-booster" type="button" aria-pressed="true">Seguir al booster<small>T+00:00 a T+06:35</small></button>
+      <button id="tab-ship" type="button" aria-pressed="false">Seguir a la Ship<small>T+00:00 a T+22:32:34</small></button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage" aria-label="Simulación">
+      <div class="view">
+        <canvas id="cv" role="img" aria-label="Animación del vuelo y la atrapada, vista de frente a la torre"></canvas>
+        <div class="hud">
+          <div class="side">
+            <canvas id="engB" role="img" aria-label="Los 33 motores del booster vistos desde abajo; los encendidos aparecen iluminados"></canvas>
+            <dl>
+              <dt>Booster</dt><dd class="who" id="e-b">0/33</dd>
+              <dt>Velocidad</dt><dd id="b-vel">0 km/h</dd>
+              <dt>Altitud</dt><dd id="b-alt">0 m</dd>
+            </dl>
+          </div>
+          <div class="mid"><b id="t-clock">T+00:00</b><span id="phase-name"></span></div>
+          <div class="side right">
+            <dl>
+              <dt>Ship</dt><dd class="who" id="e-s">0/6</dd>
+              <dt>Velocidad</dt><dd id="s-vel">0 km/h</dd>
+              <dt>Altitud</dt><dd id="s-alt">0 m</dd>
+            </dl>
+            <canvas id="engS" role="img" aria-label="Los 6 motores de la Ship vistos desde abajo; los encendidos aparecen iluminados"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="chart">
+        <h2>Motores encendidos a lo largo del vuelo (toca para saltar a ese momento)</h2>
+        <canvas id="tl" role="img" aria-label="Gráfico de motores encendidos del booster y de la Ship en el tiempo"></canvas>
+        <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Línea de tiempo">
+      </div>
+      <div class="controls">
+        <button class="btn primary" id="play" type="button">Reproducir</button>
+        <button class="btn" id="restart" type="button">Reiniciar</button>
+        <button class="btn" id="tocatch" type="button">Ir al encendido de aterrizaje</button>
+        <label for="speed" class="note">Velocidad</label>
+        <select id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+      <dl class="telemetry">
+        <div><dt>Ritmo de la animación</dt><dd id="t-rate">Tiempo real</dd></div>
+        <div><dt>Brazos de la torre</dt><dd id="t-arms">Abiertos</dd></div>
+        <div><dt>Escala del dibujo</dt><dd id="scale-note">A escala</dd></div>
+      </dl>
+    </section>
+
+    <aside>
+      <div class="card now">
+        <h3 id="d-title"></h3>
+        <p class="when" id="d-when"></p>
+        <p class="text" id="d-text"></p>
+      </div>
+      <div class="card">
+        <h2>Línea de tiempo del plan</h2>
+        <ol class="events" id="events"></ol>
+      </div>
+    </aside>
+  </main>
+
+  <p class="note">Los tiempos T+ son los del plan publicado por SpaceX para el Vuelo 15. Lo marcado «est.» no fue publicado y es una estimación: los segundos exactos en que el booster baja de 13 a 5 y de 5 a 3 motores, cuáles dos motores del anillo medio acompañan a los tres centrales cuando quedan 5, y cuántos usa la Ship en la inserción orbital. Alturas, velocidades y trayectoria son aproximadas, y lejos del suelo los vehículos se dibujan más grandes que a escala. Los tramos de aterrizaje corren en tiempo real; el resto va acelerado. Fuentes: <a href="https://en.wikipedia.org/wiki/Starship_flight_15">Wikipedia</a>, <a href="https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-1st-booster-ship-double-catch-full-recovery-what-time">Space.com</a>, <a href="https://www.nasaspaceflight.com/2026/11/starship-flight-15-spacex-history/">NASASpaceFlight</a>.</p>
+</div>
+
+<script>
+(function(){
+"use strict";
+const DEG=Math.PI/180;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,u)=>a+(b-a)*u;
+const sstep=(a,b,v)=>{const u=clamp((v-a)/(b-a),0,1);return u*u*(3-2*u);};
+const EASE={lin:u=>u,in:u=>u*u,out:u=>1-(1-u)*(1-u)};
+const hms=(h,m,s)=>h*3600+m*60+s;
+
+// ---------- plan de vuelo: eventos con su T+ en segundos ----------
+// v: vehículo (B booster, S ship, BS ambos) · set: grupo de motores que queda encendido · est: momento estimado · estEng: cantidad estimada
+const EV=[
+ {T:-3,v:"B",n:"Orden de encendido de motores",set:{B:"all"},d:"Los 33 Raptor arrancan mientras el cohete sigue sujeto a la mesa de lanzamiento."},
+ {T:0,v:"BS",n:"Despegue",d:"El cohete completo sale de la Plataforma 2 empujado por los 33 motores del booster. Los brazos de la torre ya están abiertos."},
+ {T:58,v:"BS",n:"Max Q",d:"Momento de mayor presión aerodinámica sobre la estructura. Siguen los 33 encendidos."},
+ {T:hms(0,2,19),v:"B",n:"MECO: se apagan 28 motores",set:{B:"c5"},chg:"33 → 5",estEng:true,d:"El booster Block 3 apaga todos menos 5 motores interiores. Aquí se muestran los 3 centrales y 2 del anillo medio; SpaceX no publica cuáles 2 son."},
+ {T:hms(0,2,21),v:"BS",n:"Separación en caliente",set:{S:"all"},chg:"Ship 0 → 6",d:"La Ship enciende sus 6 Raptor todavía unida al booster y se separa empujada por su propio escape."},
+ {T:hms(0,2,26),v:"B",n:"Inicio del encendido de regreso",set:{B:"all"},chg:"5 → 33",d:"Ya girado, reenciende los 28 motores apagados: el tramo de alto empuje del regreso usa los 33. En el Vuelo 14 reencendieron 26 de esos 28."},
+ {T:hms(0,3,2),v:"B",n:"Fin del encendido de regreso",set:{B:"none"},chg:"33 → 0",d:"Se apagan todos tras 36 segundos. El plan no detalla si reduce motores antes del corte. El booster sigue por inercia, llega a su punto más alto y cae guiado por sus tres aletas de rejilla."},
+ {T:hms(0,6,10),v:"B",n:"Encendido de aterrizaje",set:{B:"c13"},chg:"0 → 13",d:"Encienden solo los 13 interiores (3 centrales y 10 del anillo medio), los únicos que pueden orientarse. Los 20 exteriores no se usan. Hasta aquí apunta fuera de la torre; se desvía hacia ella solo si todo está sano."},
+ {T:hms(0,6,18),v:"B",n:"Baja de 13 a 5 motores",set:{B:"c5"},chg:"13 → 5",est:true,d:"Ya frenado, pasa a 5 motores para afinar la trayectoria; es la secuencia que voló el Vuelo 14. El segundo exacto no está publicado, y tampoco cuáles 2 del anillo medio acompañan a los 3 centrales."},
+ {T:hms(0,6,24),v:"B",n:"Baja de 5 a 3 motores",set:{B:"c3"},chg:"5 → 3",est:true,d:"Quedan los 3 centrales, que inclinan su empuje para deslizar el booster de lado hasta quedar entre los brazos. Momento estimado."},
+ {T:hms(0,6,35),v:"B",n:"Apagado y atrapada del booster",set:{B:"none"},chg:"3 → 0",d:"Los brazos se cierran, el booster apoya sus puntos de carga sobre ellos y apaga los motores. Sería la primera atrapada de un booster Block 3 y la primera en la Plataforma 2."},
+ {T:hms(0,8,9),v:"S",n:"Corte de motores de la Ship",set:{S:"none"},chg:"6 → 0",d:"Termina el ascenso. La Ship queda en una trayectoria suborbital segura: si algo anda mal, cae sola sin necesitar otro encendido."},
+ {T:hms(0,26,10),v:"S",n:"Inicio de la inserción orbital",set:{S:"one"},chg:"0 → 1",estEng:true,d:"Un encendido de 20 segundos la deja en órbita, solo si la nave está sana. SpaceX no publicó cuántos motores usa; aquí se muestra uno."},
+ {T:hms(0,26,30),v:"S",n:"Fin de la inserción orbital",set:{S:"none"},chg:"1 → 0",d:"La Ship queda en órbita baja."},
+ {T:hms(0,35,1),v:"S",n:"Empieza a soltar la carga",d:"Comienza el despliegue de los 26 satélites Starlink V3."},
+ {T:hms(1,17,40),v:"S",n:"Carga desplegada",d:"Termina el despliegue, unos 43 minutos después de empezar."},
+ {T:hms(1,27,46),v:"S",n:"Chequeo de retorno temprano (Hawái)",d:"Primer punto donde control puede terminar la misión antes de tiempo, con caída cerca de Hawái."},
+ {T:hms(7,15,35),v:"S",n:"Chequeo de retorno (Chile)",d:"Segunda oportunidad de terminar antes, con caída frente a Chile en el Pacífico sur."},
+ {T:hms(20,41,55),v:"S",n:"Chequeo final de retorno (Hawái)",d:"Última oportunidad de abortar antes de comprometerse con el regreso a Starbase."},
+ {T:hms(21,35,57),v:"S",n:"Encendido de desorbitación",set:{S:"one"},chg:"0 → 1",d:"Diez segundos de frenado con la nave apuntando hacia atrás. La prueba en tierra que lo ensayó usó un solo motor."},
+ {T:hms(21,36,7),v:"S",n:"Fin de la desorbitación",set:{S:"none"},chg:"1 → 0",d:"La trayectoria ya baja hacia la atmósfera. No hay más encendidos hasta el aterrizaje."},
+ {T:hms(22,10,46),v:"S",n:"Entrada a la atmósfera",d:"Entra de panza con el escudo térmico por delante. Apunta primero a una zona del Pacífico al oeste de Starbase y planea con las aletas hacia la base, rodeando zonas pobladas."},
+ {T:hms(22,29,34),v:"S",n:"Velocidad transónica",d:"Ya frenada por el aire, baja a la velocidad del sonido cerca de Starbase."},
+ {T:hms(22,30,13),v:"S",n:"Velocidad subsónica",d:"Cae casi horizontal. Las cuatro aletas se abren y cierran para mantenerla estable y apuntada a la torre."},
+ {T:hms(22,32,16),v:"S",n:"Encendido de aterrizaje",set:{S:"sl3"},chg:"0 → 3",d:"Encienden los 3 Raptor centrales, los que pueden orientarse. Los 3 de vacío no se usan aquí."},
+ {T:hms(22,32,18),v:"S",n:"Giro de aterrizaje",d:"Dos segundos después del encendido pasa de horizontal a vertical sobre Starbase. Es la maniobra más brusca del regreso."},
+ {T:hms(22,32,26),v:"S",n:"Baja de 3 a 2 motores",set:{S:"sl2"},chg:"3 → 2",d:"Ya vertical y más lenta, apaga un motor para no frenar de más."},
+ {T:hms(22,32,33),v:"S",n:"Baja de 2 a 1 motor",set:{S:"sl1"},chg:"2 → 1",d:"Un solo motor sostiene el último segundo de descenso entre los brazos."},
+ {T:hms(22,32,34),v:"S",n:"Apagado y atrapada de la Ship",set:{S:"none"},chg:"1 → 0",d:"Los brazos sostienen la nave y se apaga el último motor. Nunca se ha atrapado una Ship; sería la primera recuperación completa de un cohete orbital."}
+];
+const COUNT={B:{all:33,c13:13,c5:5,c3:3,none:0},S:{all:6,sl3:3,sl2:2,sl1:1,one:1,none:0}};
+function engAt(T){
+  let B="none",S="none";
+  for(const e of EV){if(e.T>T+1e-6)break;if(e.set){if(e.set.B)B=e.set.B;if(e.set.S)S=e.set.S;}}
+  return {B,S,nB:COUNT.B[B],nS:COUNT.S[S]};
+}
+
+// ---------- trayectoria (aproximada) ----------
+// a: segundo de animación · T: reloj de misión · y: altura de la base (m) · x: desvío lateral (m)
+// ang: inclinación (grados) · H: alto de la vista (m) · v: km/h · arms: 0 abiertos / 1 cerrados
+function F(a,T,y,x,ang,H,v,arms,heat,ease){return {a,T,y,x,ang,H,v,arms:arms||0,heat:heat||0,ease:ease||"lin"};}
+const SC={
+  booster:{kind:"booster",L:72,base:22,pinH:62,jump:hms(0,6,10),jumpLabel:"Ir al encendido de aterrizaje",
+    frames:[
+      F(0,-3,22,0,0,240,0),
+      F(1.5,0,22,0,0,240,0),
+      F(3.5,14,420,0,1,1100,300,0,0,"in"),
+      F(6,58,11000,0,20,9000,1500),
+      F(12,139,62000,0,55,42000,5500),
+      F(13.5,141,63500,0,55,42000,5500),
+      F(16,146,67000,0,-112,42000,5300),
+      F(22,182,85000,0,-112,42000,1500),
+      F(25,230,96000,0,-60,42000,900,0,0,"out"),
+      F(28.5,330,35000,320,-6,30000,4300,0,0,"in"),
+      F(31,370,1900,320,-8,3400,1150),
+      F(35,374,980,255,-10,1900,640),
+      F(39,378,470,170,-9,1050,300),
+      F(42,381,260,95,-6,620,170),
+      F(45,384,150,42,-3,420,100),
+      F(48.5,387.5,82,10,-1,300,52),
+      F(52,391,44,0,0,240,26),
+      F(54,393,29,0,0,240,12,1),
+      F(56,395,22,0,0,240,0,1),
+      F(58.5,397.5,22,0,0,240,0,1)
+    ]},
+  ship:{kind:"ship",L:52,base:30,pinH:38,jump:hms(22,32,16),jumpLabel:"Ir al encendido de aterrizaje",
+    frames:[
+      F(0,-3,94,0,0,300,0),
+      F(1.5,0,94,0,0,300,0),
+      F(3.5,14,490,0,1,1100,300,0,0,"in"),
+      F(6,58,11000,0,20,9000,1500),
+      F(10,139,62000,0,55,42000,5500),
+      F(11.5,141,63500,0,55,42000,5500),
+      F(17,hms(0,8,9),150000,0,88,60000,26400,0,0,"out"),
+      F(19,hms(0,26,10),178000,0,90,60000,26300),
+      F(21,hms(0,26,30),180000,0,90,60000,26500),
+      F(22.5,hms(0,35,1),180000,0,90,60000,26500),
+      F(25.5,hms(1,17,40),180000,0,90,60000,26500),
+      F(26.5,hms(1,27,46),180000,0,90,60000,26500),
+      F(28.5,hms(7,15,35),180000,0,90,60000,26500),
+      F(30.5,hms(20,41,55),180000,0,90,60000,26500),
+      F(32.5,hms(21,35,57),180000,0,-90,60000,26500),
+      F(35.5,hms(21,36,7),179500,0,-90,60000,26200),
+      F(39,hms(22,10,46),120000,0,70,60000,26400),
+      F(42,hms(22,17,30),70000,150,70,50000,20000,0,1),
+      F(44.5,hms(22,24,10),42000,150,72,40000,6000,0,0.3),
+      F(47,hms(22,29,34),21000,150,85,22000,1150),
+      F(49,hms(22,30,13),16500,150,90,16000,950),
+      F(53,hms(22,32,16),760,150,90,1700,300),
+      F(55,hms(22,32,18),620,135,84,1400,290),
+      F(59,hms(22,32,22),400,90,-7,900,190),
+      F(63,hms(22,32,26),250,45,-3,560,100),
+      F(67,hms(22,32,30),120,12,0,320,55),
+      F(69.5,hms(22,32,32)+0.5,52,0,0,240,20),
+      F(70.5,hms(22,32,33)+0.5,38,0,0,240,9,1),
+      F(71,hms(22,32,34),30,0,0,240,0,1),
+      F(75,hms(22,32,38),30,0,0,240,0,1)
+    ]}
+};
+function aOfT(sc,T){
+  const fr=sc.frames;if(T<=fr[0].T)return 0;
+  for(let i=0;i<fr.length-1;i++){const A=fr[i],B=fr[i+1];if(T<=B.T&&B.T>A.T)return A.a+(T-A.T)/(B.T-A.T)*(B.a-A.a);}
+  return fr[fr.length-1].a;
+}
+Object.values(SC).forEach(s=>{
+  const last=s.frames[s.frames.length-1];
+  s.dur=last.a;
+  s.events=EV.filter(e=>e.T<=last.T).map(e=>Object.assign({},e,{a:aOfT(s,e.T)}));
+  s.sepA=aOfT(s,hms(0,2,21));
+  s.steps=[{a:0,nB:0,nS:0}];
+  s.events.forEach(e=>{if(e.set){const g=engAt(e.T);s.steps.push({a:e.a,nB:g.nB,nS:g.nS});}});
+});
+
+function tangents(xs,ys){   // interpolación cúbica monótona: velocidad continua, sin rebotes
+  const n=xs.length,d=[],m=new Array(n);
+  for(let i=0;i<n-1;i++)d.push((ys[i+1]-ys[i])/(xs[i+1]-xs[i]));
+  m[0]=d[0];m[n-1]=d[n-2];
+  for(let i=1;i<n-1;i++){
+    if(d[i-1]*d[i]<=0)m[i]=0;
+    else{const h0=xs[i]-xs[i-1],h1=xs[i+1]-xs[i],w1=2*h1+h0,w2=h1+2*h0;m[i]=(w1+w2)/(w1/d[i-1]+w2/d[i]);}
+  }
+  return m;
+}
+function herm(y0,y1,m0,m1,hh,u){
+  const u2=u*u,u3=u2*u;
+  return (2*u3-3*u2+1)*y0+(u3-2*u2+u)*hh*m0+(-2*u3+3*u2)*y1+(u3-u2)*hh*m1;
+}
+Object.values(SC).forEach(s=>{
+  const xs=s.frames.map(f=>f.a);s.tan={};
+  ["y","x","ang"].forEach(k=>{s.tan[k]=tangents(xs,s.frames.map(f=>f[k]));});
+  s.tan.lH=tangents(xs,s.frames.map(f=>Math.log(f.H)));
+});
+function sample(sc,t){
+  const fr=sc.frames;let i=0;
+  while(i<fr.length-2&&t>=fr[i+1].a)i++;
+  const A=fr[i],B=fr[i+1],hh=B.a-A.a;
+  const u=clamp((t-A.a)/hh,0,1),s=u*u*(3-2*u),g=k=>herm(A[k],B[k],sc.tan[k][i],sc.tan[k][i+1],hh,u);
+  return {
+    T:lerp(A.T,B.T,u),y:g("y"),x:g("x"),ang:g("ang"),
+    H:Math.exp(herm(Math.log(A.H),Math.log(B.H),sc.tan.lH[i],sc.tan.lH[i+1],hh,u)),v:lerp(A.v,B.v,u),
+    arms:lerp(A.arms,B.arms,s),heat:lerp(A.heat,B.heat,u),rate:(B.T-A.T)/hh
+  };
+}
+
+// ---------- estado ----------
+const $=id=>document.getElementById(id);
+const cv=$("cv"),ctx=cv.getContext("2d"),tl=$("tl"),tx=tl.getContext("2d"),eb=$("engB"),xb=eb.getContext("2d"),es=$("engS"),xs=es.getContext("2d");
+let W=800,Hc=500,TW=800,TH=96,EB=78,ES=78;
+let sc=SC.booster,t=0,playing=false,speed=1,drift=0,last=0,wall=0,evIdx=-2;
+const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function rng(seed){let s=seed;return()=>{s=(s*16807)%2147483647;return s/2147483647;};}
+const r1=rng(42),STARS=[],CLOUDS=[];
+for(let i=0;i<150;i++)STARS.push({x:r1(),y:r1(),r:0.5+r1()*1.1,a:0.35+r1()*0.65});
+for(let i=0;i<16;i++)CLOUDS.push({x:(r1()-0.5)*40000,y:5500+r1()*6000,w:2500+r1()*4500});
+
+function fit(c,cx){
+  const r=c.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.max(30,r.width),h=Math.max(30,r.height);
+  c.width=Math.round(w*d);c.height=Math.round(h*d);cx.setTransform(d,0,0,d,0,0);
+  return [w,h];
+}
+function resize(){[W,Hc]=fit(cv,ctx);[TW,TH]=fit(tl,tx);EB=fit(eb,xb)[0];ES=fit(es,xs)[0];draw();}
+function mix(c1,c2,k){return "rgb("+c1.map((v,i)=>Math.round(lerp(v,c2[i],k))).join(",")+")";}
+
+// ---------- vehículos (coordenadas locales: nariz hacia arriba, origen en el centro) ----------
+function flame(w,len){
+  const fl=len*(0.9+0.07*Math.sin(wall*43)+0.05*Math.sin(wall*71));
+  let g=ctx.createLinearGradient(0,0,0,fl);                     // penacho exterior
+  g.addColorStop(0,"rgba(255,170,90,.6)");g.addColorStop(.35,"rgba(240,120,110,.34)");
+  g.addColorStop(.75,"rgba(170,110,200,.15)");g.addColorStop(1,"rgba(120,100,220,0)");
+  ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-w*.5,0);
+  ctx.bezierCurveTo(-w*.95,fl*.3,-w*.55,fl*.8,0,fl);ctx.bezierCurveTo(w*.55,fl*.8,w*.95,fl*.3,w*.5,0);
+  ctx.closePath();ctx.fill();
+  const cl=fl*.62;g=ctx.createLinearGradient(0,0,0,cl);          // núcleo brillante
+  g.addColorStop(0,"rgba(255,250,235,.98)");g.addColorStop(.3,"rgba(255,214,130,.9)");g.addColorStop(1,"rgba(255,140,70,0)");
+  ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-w*.4,0);
+  ctx.quadraticCurveTo(-w*.45,cl*.5,0,cl);ctx.quadraticCurveTo(w*.45,cl*.5,w*.4,0);ctx.closePath();ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.5)";                            // diamantes de choque
+  for(let i=1;i<=3;i++){const y=cl*(0.14+i*0.17),r=w*.2*(1-i*.2);ctx.beginPath();ctx.ellipse(0,y,r,r*.55,0,0,7);ctx.fill();}
+}
+function steel(w){
+  const g=ctx.createLinearGradient(-w/2,0,w/2,0);
+  g.addColorStop(0,"#737e8e");g.addColorStop(.12,"#a9b3c1");g.addColorStop(.3,"#e6ecf3");
+  g.addColorStop(.42,"#c3ccd8");g.addColorStop(.7,"#98a3b2");g.addColorStop(1,"#5e6878");
+  return g;
+}
+function welds(w,top,L,stepM,s){
+  if(s<0.85)return;
+  ctx.strokeStyle="rgba(36,46,60,.2)";ctx.lineWidth=Math.max(.5,s*.07);ctx.beginPath();
+  for(let m=stepM;m<L/s-0.5;m+=stepM){ctx.moveTo(-w/2,top+m*s);ctx.lineTo(w/2,top+m*s);}
+  ctx.stroke();
+}
+function nozzles(list,bot,s){
+  ctx.fillStyle="#15181e";
+  list.forEach(([x,r,len])=>{ctx.beginPath();ctx.moveTo((x-r*.55)*s,bot);ctx.lineTo((x+r*.55)*s,bot);ctx.lineTo((x+r)*s,bot+len*s);ctx.lineTo((x-r)*s,bot+len*s);ctx.closePath();ctx.fill();});
+}
+function drawBooster(s,n,pins){
+  const L=72*s,w=9*s,top=-L/2,bot=L/2;
+  nozzles([[-3.6,.62,1.5],[-2.4,.62,1.5],[-1.2,.62,1.5],[0,.62,1.5],[1.2,.62,1.5],[2.4,.62,1.5],[3.6,.62,1.5]],bot,s);
+  if(n>0){
+    const fw=n>=33?0.95:n>=13?0.62:n>=5?0.42:0.3;
+    ctx.save();ctx.translate(0,bot+1.2*s);flame(w*fw,L*(0.32+0.78*Math.min(n/33,1)));ctx.restore();
+  }
+  // aletas de rejilla laterales
+  [-1,1].forEach(d=>{
+    const x0=d>0?w/2:-w/2-4.4*s,y0=top+6.2*s;
+    ctx.fillStyle="#2b313b";ctx.fillRect(x0,y0,4.4*s,3*s);
+    if(s>1.1){ctx.strokeStyle="rgba(150,162,180,.55)";ctx.lineWidth=Math.max(.5,s*.1);ctx.beginPath();
+      for(let i=1;i<4;i++){ctx.moveTo(x0+i*1.1*s,y0);ctx.lineTo(x0+i*1.1*s,y0+3*s);}
+      ctx.moveTo(x0,y0+1*s);ctx.lineTo(x0+4.4*s,y0+1*s);ctx.moveTo(x0,y0+2*s);ctx.lineTo(x0+4.4*s,y0+2*s);ctx.stroke();}
+    ctx.fillStyle="#6f7a89";ctx.fillRect(d>0?w/2:-w/2-.55*s,bot-23*s,.55*s,20.5*s);     // carenado lateral
+  });
+  ctx.fillStyle=steel(w);ctx.fillRect(-w/2,top,w,L);
+  welds(w,top,L,3.6,s);
+  ctx.fillStyle="rgba(255,255,255,.14)";ctx.fillRect(-.5*s,bot-23*s,1*s,20.5*s);          // carenado frontal
+  ctx.fillStyle="rgba(28,36,48,.32)";ctx.fillRect(w*.24,top+4.5*s,.32*s,L-8*s);           // canaleta de cables
+  ctx.fillStyle="rgba(28,36,48,.16)";ctx.fillRect(-w/2,top+30*s,w,.5*s);                  // unión de tanques
+  // anillo de separación en caliente (celosía abierta)
+  ctx.fillStyle="#161a21";ctx.fillRect(-w/2,top,w,3.2*s);
+  ctx.strokeStyle="#9aa6b6";ctx.lineWidth=Math.max(.6,s*.16);ctx.beginPath();
+  for(let k=0;k<6;k++){const xa=-w/2+k*w/6;ctx.moveTo(xa,top+3.2*s);ctx.lineTo(xa+w/12,top);ctx.lineTo(xa+w/6,top+3.2*s);}
+  ctx.stroke();ctx.fillStyle="#aeb8c6";ctx.fillRect(-w/2,top,w,.35*s);
+  ctx.fillStyle="rgba(24,29,37,.78)";ctx.fillRect(-1.5*s,top+6.2*s,3*s,3*s);              // tercera aleta, de frente
+  ctx.fillStyle="rgba(20,25,33,.82)";ctx.fillRect(-w/2,bot-2.6*s,w,2.6*s);                // sección de motores
+  ctx.fillStyle="rgba(255,255,255,.1)";ctx.fillRect(-w/2,bot-2.6*s,w,.25*s);
+  if(pins){ctx.fillStyle="#0e1219";const py=bot-62*s;ctx.fillRect(-w/2-1.3*s,py-1*s,1.3*s,1*s);ctx.fillRect(w/2,py-1*s,1.3*s,1*s);}
+}
+function shipPath(L,w,s){
+  const top=-L/2,bot=L/2;ctx.beginPath();ctx.moveTo(-w/2,bot);ctx.lineTo(-w/2,top+17*s);
+  ctx.bezierCurveTo(-w/2,top+8*s,-w*.2,top+1.4*s,0,top);ctx.bezierCurveTo(w*.2,top+1.4*s,w/2,top+8*s,w/2,top+17*s);
+  ctx.lineTo(w/2,bot);ctx.closePath();
+}
+function drawShip(s,n,heat,pins){
+  const L=52*s,w=9*s,top=-L/2,bot=L/2;
+  nozzles([[-2.7,1.15,2.2],[2.7,1.15,2.2],[-.75,.6,1.5],[.75,.6,1.5]],bot,s);
+  if(n>0){
+    const fw=n>=6?0.92:n>=3?0.56:n>=2?0.44:0.3;
+    ctx.save();ctx.translate(0,bot+1.4*s);flame(w*fw,L*(0.3+0.7*Math.min(n/6,1)));ctx.restore();
+  }
+  if(heat>0.02){   // plasma del lado del escudo térmico
+    ctx.save();ctx.shadowColor="rgba(255,140,60,"+(0.9*heat)+")";ctx.shadowBlur=w*2.4;
+    ctx.strokeStyle="rgba(255,200,140,"+(0.85*heat)+")";ctx.lineWidth=w*.5;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(w*.55,-L*.4);ctx.lineTo(w*.55,L*.46);ctx.stroke();ctx.stroke();ctx.restore();
+  }
+  [-1,1].forEach(d=>{   // aletas: delanteras delgadas, traseras grandes
+    ctx.fillStyle="#12161c";
+    ctx.beginPath();ctx.moveTo(d*w*.44,top+9.5*s);ctx.lineTo(d*(w/2+3*s),top+14.5*s);ctx.lineTo(d*(w/2+3.2*s),top+18.5*s);ctx.lineTo(d*w/2,top+18.5*s);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(d*w/2,bot-15.5*s);ctx.lineTo(d*(w/2+5.4*s),bot-8*s);ctx.lineTo(d*(w/2+5.4*s),bot-1.2*s);ctx.lineTo(d*w/2,bot-1.2*s);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="rgba(140,152,170,.35)";ctx.lineWidth=Math.max(.5,s*.1);
+    ctx.beginPath();ctx.moveTo(d*(w/2+5.4*s),bot-8*s);ctx.lineTo(d*(w/2+5.4*s),bot-1.2*s);ctx.stroke();
+  });
+  shipPath(L,w,s);ctx.fillStyle=steel(w);ctx.fill();
+  ctx.save();shipPath(L,w,s);ctx.clip();
+  welds(w,top,L,1.8,s*.99);
+  const hg=ctx.createLinearGradient(-w*.1,0,w/2,0);hg.addColorStop(0,"#0d1015");hg.addColorStop(.5,"#1d222a");hg.addColorStop(1,"#0a0c10");
+  ctx.fillStyle=hg;ctx.fillRect(-w*.1,top,w,L);                                            // escudo térmico
+  if(s>1.3){ctx.strokeStyle="rgba(120,132,150,.13)";ctx.lineWidth=.6;ctx.beginPath();
+    for(let m=1.2;m<52;m+=1.2){ctx.moveTo(-w*.1,top+m*s);ctx.lineTo(w/2,top+m*s);}ctx.stroke();}
+  ctx.fillStyle="rgba(18,22,29,.75)";ctx.fillRect(-w/2,bot-2.2*s,w,2.2*s);                 // faldón de motores
+  ctx.restore();
+  ctx.fillStyle="#252c37";ctx.fillRect(-w*.44,top+21*s,w*.28,.6*s);                        // compuerta de carga
+  if(pins){ctx.fillStyle="#0c1017";const py=bot-38*s;ctx.fillRect(-w/2-1.3*s,py-1*s,1.3*s,1*s);ctx.fillRect(w/2,py-1*s,1.3*s,1*s);}
+}
+
+// ---------- torre, mesa de lanzamiento y tanques ----------
+function drawSite(X,Y,ppm,armTop,power){
+  const R=(x0,yTop,wm,hm)=>ctx.fillRect(X(x0),Y(yTop),wm*ppm,hm*ppm);
+  // la otra torre, al fondo
+  ctx.fillStyle="#1a212c";R(-437,146,9,146);R(-439,153,13,7);
+  // tanques de propelente
+  [[62,36],[77,36],[92,36],[107,29],[122,29],[137,22]].forEach(([x,hh])=>{
+    const g=ctx.createLinearGradient(X(x),0,X(x+12),0);
+    g.addColorStop(0,"#333d4c");g.addColorStop(.32,"#6d7889");g.addColorStop(1,"#252d39");
+    ctx.fillStyle=g;R(x,hh,12,hh);ctx.beginPath();ctx.ellipse(X(x+6),Y(hh),6*ppm,2.4*ppm,0,Math.PI,0);ctx.fill();
+    ctx.fillStyle="rgba(10,14,20,.35)";R(x,hh*.5,12,.5);
+  });
+  // brazo de conexión de la Ship, recogido hacia un lado
+  ctx.fillStyle="#2a323e";R(5,104,13,3.2);ctx.fillStyle="#1c232d";R(16,105.5,3,6);
+  // torre: interior en sombra, celosía, patas
+  ctx.fillStyle="#141a22";R(-6,146,12,146);
+  ctx.strokeStyle="rgba(96,110,132,.5)";ctx.lineWidth=Math.max(.6,ppm*.42);ctx.beginPath();
+  for(let m=0;m<144;m+=9){ctx.moveTo(X(-4.4),Y(m));ctx.lineTo(X(4.4),Y(m+9));ctx.moveTo(X(4.4),Y(m));ctx.lineTo(X(-4.4),Y(m+9));}
+  ctx.stroke();
+  ctx.fillStyle="#3b4556";for(let m=9;m<146;m+=9)R(-6,m+.5,12,1);
+  [-6,4.3].forEach(x=>{
+    const g=ctx.createLinearGradient(X(x),0,X(x+1.7),0);
+    g.addColorStop(0,"#566175");g.addColorStop(.5,"#3a4455");g.addColorStop(1,"#222a36");
+    ctx.fillStyle=g;R(x,146,1.7,146);
+  });
+  ctx.fillStyle="rgba(170,182,202,.22)";R(-2.2,146,.45,146);R(1.75,146,.45,146);        // rieles del carro
+  // remate superior y pararrayos
+  ctx.fillStyle="#0f1319";R(-8,154,16,8);R(-5,159,10,5);
+  ctx.fillStyle="#2c3542";R(-8,154.6,16,.6);
+  ctx.fillStyle="#1a2029";R(-.3,178,.6,19);
+  ctx.fillStyle="rgba(255,70,60,"+(0.55+0.45*Math.sin(wall*3))+")";ctx.beginPath();ctx.arc(X(0),Y(178),Math.max(1.2,ppm*.5),0,7);ctx.fill();
+  // mesa de lanzamiento con foso de llamas
+  ctx.fillStyle="#06080b";R(-14,14,28,14);
+  if(power>0.02){const fg=ctx.createLinearGradient(0,Y(14),0,Y(0));fg.addColorStop(0,"rgba(255,170,80,"+(0.75*power)+")");fg.addColorStop(1,"rgba(255,110,50,"+(0.25*power)+")");ctx.fillStyle=fg;R(-14,14,28,14);}
+  ctx.fillStyle="#1a202a";R(-22,14,8,14);R(14,14,8,14);
+  const dg=ctx.createLinearGradient(0,Y(20),0,Y(14));dg.addColorStop(0,"#3c4656");dg.addColorStop(1,"#232a35");
+  ctx.fillStyle=dg;R(-22,20,44,6);
+  ctx.fillStyle="#4a5567";R(-5.8,22,11.6,2);
+  ctx.fillStyle="#2c3542";R(-10,armTop+2,20,9);ctx.fillStyle="#465166";R(-10,armTop+2,20,.8);   // carro de los brazos
+  // vapor y polvo cuando los motores están cerca de la mesa
+  if(power>0.02){
+    for(let i=0;i<9;i++){
+      const cx=X((i-4)*15*(0.55+power)+Math.sin(wall*.7+i*1.9)*5),cy=Y(5+(i%3)*6+Math.sin(wall*.9+i)*2),r=(15+(i*7)%11)*ppm*(0.7+power);
+      const sg=ctx.createRadialGradient(cx,cy,0,cx,cy,r);sg.addColorStop(0,"rgba(226,204,186,"+(0.42*power)+")");sg.addColorStop(1,"rgba(226,204,186,0)");
+      ctx.fillStyle=sg;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+    }
+  }
+}
+
+// ---------- escena ----------
+function draw(){
+  const st=sample(sc,t),E=engAt(st.T),H=st.H,ppm=Hc/H,L=sc.L;
+  const yc=st.y+L/2;
+  const camB=Math.max(-0.24*H,yc-0.62*H),camX=st.x*sstep(500,3000,H);
+  const X=wx=>W/2+(wx-camX)*ppm,Y=wy=>Hc-(wy-camB)*ppm;
+
+  // cielo
+  const k=sstep(8000,80000,st.y),SP=[4,6,12];
+  const g=ctx.createLinearGradient(0,0,0,Hc);
+  g.addColorStop(0,mix([22,34,64],SP,k));g.addColorStop(.6,mix([78,74,116],SP,k));g.addColorStop(1,mix([226,150,96],[8,12,22],k));
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,Hc);
+  const sa=0.12+0.88*sstep(15000,70000,st.y);
+  ctx.fillStyle="#fff";
+  STARS.forEach(p=>{const sx=(((p.x+drift)%1)+1)%1;ctx.globalAlpha=p.a*sa*(p.y<.75?1:.4);ctx.beginPath();ctx.arc(sx*W,p.y*Hc*.9,p.r,0,7);ctx.fill();});
+  ctx.globalAlpha=1;
+
+  // curvatura de la Tierra en vistas altas
+  const ea=sstep(30000,90000,st.y);
+  if(ea>0.01){
+    const R=Math.max(W,Hc)*2.4,top=Hc*(1-0.2*ea);
+    ctx.save();ctx.globalAlpha=ea;
+    const eg=ctx.createRadialGradient(W/2,top+R,R*.94,W/2,top+R,R);
+    eg.addColorStop(0,"#0a1830");eg.addColorStop(.92,"#163a66");eg.addColorStop(1,"#7fb6e8");
+    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(W/2,top+R,R,0,7);ctx.fill();ctx.restore();
+  }
+
+  // nubes
+  if(H>2500&&H<70000){
+    ctx.fillStyle="rgba(255,236,220,.09)";
+    CLOUDS.forEach(c=>{const cx=X(c.x+camX*.6),cy=Y(c.y);if(cy>-60&&cy<Hc+60){ctx.beginPath();ctx.ellipse(cx,cy,c.w*ppm/2,Math.max(2,c.w*ppm/14),0,0,7);ctx.fill();}});
+  }
+
+  // suelo y sitio de lanzamiento
+  const gy=Y(0),site=ppm>0.04&&Y(200)<Hc+2,armTop=sc.base+sc.pinH;
+  if(gy<Hc+2){
+    const gg=ctx.createLinearGradient(0,gy,0,Hc);gg.addColorStop(0,"#1b212b");gg.addColorStop(1,"#0a0e14");
+    ctx.fillStyle=gg;ctx.fillRect(0,gy,W,Hc-gy+2);
+    ctx.fillStyle="rgba(255,190,130,.35)";ctx.fillRect(0,gy-1,W,1.5);
+  }
+  if(site){
+    const stackBase=sc.kind==="ship"&&t<sc.sepA?st.y-72:st.y;
+    const nLow=sc.kind==="booster"||t<sc.sepA?E.nB:E.nS,ref=sc.kind==="booster"||t<sc.sepA?13:3;
+    const power=clamp(nLow/ref,0,1.25)*clamp(1-(stackBase-22)/260,0,1)*(Math.abs(st.x)<60?1:0);
+    drawSite(X,Y,ppm,armTop,power);
+  }
+
+  // vehículos
+  const minPx=sc.kind==="booster"?78:66;
+  const s=Math.max(ppm,minPx/L),exag=s>ppm*1.05,near=ppm>0.6,dt=t-sc.sepA,off=(36+26)*s;
+  ctx.save();ctx.translate(X(st.x),Y(yc));ctx.rotate(st.ang*DEG);
+  if(sc.kind==="booster"){
+    if(dt<0){ctx.save();ctx.translate(0,-off);drawShip(s,0,0,false);ctx.restore();}
+    else if(dt<5){ctx.save();ctx.globalAlpha=1-dt/5;ctx.translate(0,-off-dt*dt*16*s);drawShip(s,E.nS,0,false);ctx.restore();}
+    drawBooster(s,E.nB,near);
+  }else{
+    if(dt<0){ctx.save();ctx.translate(0,off);drawBooster(s,E.nB,false);ctx.restore();}
+    else if(dt<5){ctx.save();ctx.globalAlpha=1-dt/5;ctx.translate(0,off+dt*dt*16*s);drawBooster(s,E.nB,false);ctx.restore();}
+    const d0=hms(0,35,1),d1=hms(1,17,40);
+    if(st.T>d0&&st.T<d1+400){   // satélites saliendo
+      const p=(st.T-d0)/(d1-d0);ctx.fillStyle="#cfd8e6";
+      for(let i=0;i<6;i++){const q=p*6-i;if(q>0&&q<2.4){ctx.globalAlpha=clamp(1.2-q/2,0,1);ctx.fillRect(-9*s*.5-q*46,-4+i*2,7,2.5);}}
+      ctx.globalAlpha=1;
+    }
+    drawShip(s,dt<0?0:E.nS,st.heat,near);
+  }
+  ctx.restore();
+
+  // brazos (vista de frente: salen de la torre hacia la cámara, uno a cada lado del vehículo)
+  if(site){
+    const gap=lerp(17,6.9,st.arms),col=st.arms>0.98?"#74d4a8":"#ffb14a";
+    [-1,1].forEach(d=>{
+      ctx.strokeStyle="#222a36";ctx.lineWidth=3.4*ppm;ctx.lineCap="butt";ctx.beginPath();
+      ctx.moveTo(X(d*5.4),Y(armTop-2.4));ctx.lineTo(X(d*gap),Y(armTop-2.9));ctx.stroke();
+      const ax=X(d*gap-2.3),ay=Y(armTop),aw=4.6*ppm,ah=5.8*ppm;
+      const ag=ctx.createLinearGradient(ax,0,ax+aw,0);ag.addColorStop(0,"#5a667b");ag.addColorStop(1,"#343e4e");
+      ctx.fillStyle=ag;ctx.fillRect(ax,ay,aw,ah);
+      ctx.strokeStyle="rgba(15,20,28,.55)";ctx.lineWidth=Math.max(.6,ppm*.3);ctx.beginPath();
+      ctx.rect(ax+aw*.14,ay+ah*.22,aw*.72,ah*.62);ctx.moveTo(ax+aw*.14,ay+ah*.22);ctx.lineTo(ax+aw*.86,ay+ah*.84);ctx.moveTo(ax+aw*.86,ay+ah*.22);ctx.lineTo(ax+aw*.14,ay+ah*.84);ctx.stroke();
+      ctx.fillStyle=col;ctx.fillRect(ax,ay,aw,Math.max(1.5,ppm*.7));     // riel donde se apoya el vehículo
+    });
+  }
+
+  // regla de altura
+  const raw=H/6,p10=Math.pow(10,Math.floor(Math.log10(raw))),m=raw/p10,step=(m<1.5?1:m<3.5?2:m<7.5?5:10)*p10;
+  ctx.font='500 11px "IBM Plex Mono",monospace';ctx.textBaseline="middle";
+  for(let v=Math.max(0,Math.ceil(camB/step)*step);v<camB+H;v+=step){
+    const py=Y(v);if(py<14||py>Hc-104)continue;
+    ctx.fillStyle="rgba(232,237,245,.45)";ctx.fillRect(0,py,10,1);
+    ctx.fillStyle="rgba(232,237,245,.75)";
+    ctx.fillText(step>=1000?(v/1000)+" km":v+" m",14,py);
+  }
+
+  // vista superior de los brazos
+  const ia=sstep(1400,700,H);
+  if(ia>0.02){
+    const bw=118,bh=124,bx=W-bw-12,by=12,q=1.9;
+    ctx.save();ctx.globalAlpha=ia;
+    ctx.fillStyle="rgba(10,15,24,.78)";ctx.strokeStyle="rgba(147,162,185,.5)";ctx.lineWidth=1;
+    ctx.fillRect(bx,by,bw,bh);ctx.strokeRect(bx+.5,by+.5,bw-1,bh-1);
+    ctx.fillStyle="rgba(232,237,245,.8)";ctx.textBaseline="alphabetic";ctx.fillText("Vista superior",bx+8,by+bh-8);
+    const ox=bx+bw/2,oy=by+16;
+    ctx.fillStyle="#3a4557";ctx.fillRect(ox-6*q,oy-6*q,12*q,12*q);
+    const sw=lerp(26,0,st.arms)*DEG;
+    ctx.strokeStyle=st.arms>0.98?"#74d4a8":"#ffb14a";ctx.lineWidth=3;ctx.lineCap="round";
+    [-1,1].forEach(d=>{ctx.beginPath();ctx.moveTo(ox+d*6.3*q,oy+6*q);ctx.lineTo(ox+d*(6.3*q+Math.sin(sw)*34*q),oy+6*q+Math.cos(sw)*34*q);ctx.stroke();});
+    const vx=clamp(st.x,-22,22),far=clamp((st.y-sc.base)/120,0,1);
+    ctx.beginPath();ctx.arc(ox+vx*q,oy+26*q,4.5*q,0,7);
+    ctx.fillStyle="rgba(223,230,239,"+(1-0.65*far)+")";ctx.fill();
+    ctx.restore();
+  }
+
+  drawEngines(E);drawChart();ui(st,E,exag);
+}
+
+// ---------- mapa de motores ----------
+const BPOS=[],SPOS=[];
+[-90,30,150].forEach(a=>BPOS.push({r:.125,a,z:.088}));
+for(let i=0;i<10;i++)BPOS.push({r:.41,a:i*36-90,z:.098});
+for(let i=0;i<20;i++)BPOS.push({r:.8,a:i*18-81,z:.098});
+[-90,30,150].forEach(a=>SPOS.push({r:.21,a,z:.15}));
+[90,210,330].forEach(a=>SPOS.push({r:.63,a,z:.27}));
+function litB(set,i){return set==="all"||(set==="c13"&&i<13)||(set==="c5"&&(i<3||i===3||i===8))||(set==="c3"&&i<3);}
+function litS(set,i){return set==="all"||(set==="sl3"&&i<3)||(set==="sl2"&&i<2)||((set==="sl1"||set==="one")&&i<1);}
+function ring(ex,S,pos,lit){
+  const cx=S/2,cy=S/2,R=S/2-2;
+  ex.clearRect(0,0,S,S);
+  ex.strokeStyle="#4a5b76";ex.lineWidth=1.5;ex.fillStyle="#0e1522";
+  ex.beginPath();ex.arc(cx,cy,R,0,7);ex.fill();ex.stroke();
+  pos.forEach((p,i)=>{
+    const x=cx+Math.cos(p.a*DEG)*p.r*R,y=cy+Math.sin(p.a*DEG)*p.r*R,z=p.z*R,on=lit(i);
+    ex.beginPath();ex.arc(x,y,z,0,7);
+    if(on){
+      const g=ex.createRadialGradient(x,y,0,x,y,z);
+      g.addColorStop(0,"#fff6dc");g.addColorStop(.55,"#ffc260");g.addColorStop(1,"#ff7a3c");
+      ex.save();ex.shadowColor="rgba(255,160,70,.9)";ex.shadowBlur=z*1.2;ex.fillStyle=g;ex.fill();ex.restore();
+    }else{ex.fillStyle="#1a2434";ex.fill();ex.strokeStyle="#3d4d66";ex.lineWidth=1;ex.stroke();}
+  });
+}
+function drawEngines(E){
+  ring(xb,EB,BPOS,i=>litB(E.B,i));
+  ring(xs,ES,SPOS,i=>litS(E.S,i));
+}
+
+// ---------- gráfico de motores en el tiempo ----------
+function drawChart(){
+  tx.clearRect(0,0,TW,TH);
+  const pad=4,w=TW-pad*2,xa=a=>pad+a/sc.dur*w;
+  const rows=[{k:"nB",max:33,y0:6,h:38,c:"255,177,74",name:"Booster"},{k:"nS",max:6,y0:54,h:34,c:"127,196,255",name:"Ship"}];
+  tx.font='500 10.5px "IBM Plex Mono",monospace';tx.textBaseline="alphabetic";
+  rows.forEach(r=>{
+    const base=r.y0+r.h;
+    tx.fillStyle="rgba(255,255,255,.04)";tx.fillRect(pad,r.y0,w,r.h);
+    tx.beginPath();tx.moveTo(xa(0),base);
+    let prev=0;
+    sc.steps.forEach((s,i)=>{const x=xa(s.a);tx.lineTo(x,base-prev/r.max*(r.h-12));prev=s[r.k];tx.lineTo(x,base-prev/r.max*(r.h-12));});
+    tx.lineTo(xa(sc.dur),base-prev/r.max*(r.h-12));tx.lineTo(xa(sc.dur),base);tx.closePath();
+    tx.fillStyle="rgba("+r.c+",.35)";tx.fill();tx.strokeStyle="rgba("+r.c+",.95)";tx.lineWidth=1.5;tx.stroke();
+    // cantidad sobre cada tramo
+    let lastX=-99;
+    sc.steps.forEach((s,i)=>{
+      const n=s[r.k],before=i?sc.steps[i-1][r.k]:0;if(n===before||n===0)return;
+      const x=xa(s.a)+3;if(x-lastX<14)return;lastX=x;
+      tx.fillStyle="rgb("+r.c+")";tx.fillText(String(n),x,base-n/r.max*(r.h-12)-3);
+    });
+    tx.fillStyle="rgba(232,237,245,.6)";tx.textAlign="right";tx.fillText(r.name,TW-pad-3,r.y0+10);tx.textAlign="left";
+  });
+  // marcas de eventos y cabezal
+  tx.fillStyle="rgba(232,237,245,.28)";
+  sc.events.forEach(e=>tx.fillRect(xa(e.a),TH-5,1,5));
+  const px=xa(t);tx.fillStyle="#fff";tx.fillRect(px-.75,0,1.5,TH);
+}
+function seekChart(ev){
+  const r=tl.getBoundingClientRect();t=clamp((ev.clientX-r.left-4)/(r.width-8),0,1)*sc.dur;draw();
+}
+tl.addEventListener("pointerdown",e=>{tl.setPointerCapture(e.pointerId);seekChart(e);});
+tl.addEventListener("pointermove",e=>{if(e.buttons)seekChart(e);});
+
+// ---------- interfaz ----------
+const p2=n=>String(Math.floor(n)).padStart(2,"0");
+function fmtT(T,frac){
+  const neg=T<0,s=neg?Math.ceil(-T):Math.floor(T+1e-6);
+  const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
+  return (neg&&s>0?"T−":"T+")+(h?p2(h)+":":"")+p2(m)+":"+p2(ss);
+}
+function ui(st,E,exag){
+  $("t-clock").textContent=fmtT(st.T);
+  const fa=a=>a>=100000?Math.round(a/1000)+" km":a>=1000?(a/1000).toFixed(1)+" km":Math.round(a)+" m";
+  const v=st.v>1000?Math.round(st.v/10)*10:Math.round(st.v),fv=v.toLocaleString("es-DO")+" km/h";
+  const stacked=t<sc.sepA,own=sc.kind==="booster"?"b":"s",other=own==="b"?"s":"b";
+  const baseAlt=sc.kind==="booster"?st.y:st.y-(stacked?72:0);   // altura de la base del cohete mientras van unidos
+  $(own+"-vel").textContent=fv;$(own+"-alt").textContent=fa(stacked?Math.max(0,baseAlt-22):st.y);
+  $(other+"-vel").textContent=stacked?fv:"sin seguir";$(other+"-alt").textContent=stacked?fa(Math.max(0,baseAlt-22)):"sin seguir";
+  const rt=st.rate*speed;
+  $("t-rate").textContent=Math.abs(rt-1)<0.15?"Tiempo real":"×"+(rt>=100?(Math.round(rt/10)*10).toLocaleString("es-DO"):rt>=10?Math.round(rt):rt.toFixed(1));
+  $("t-arms").textContent=st.arms<0.02?"Abiertos":st.arms<0.98?"Cerrando":"Cerrados";
+  $("e-b").textContent=E.nB+"/33";$("e-s").textContent=E.nS+"/6";
+  let idx=-1;sc.events.forEach((e,i)=>{if(st.T>=e.T-1e-6)idx=i;});
+  if(idx!==evIdx){
+    evIdx=idx;const e=sc.events[Math.max(0,idx)];
+    $("phase-name").textContent=e.n;$("d-title").textContent=e.n;
+    $("d-when").textContent=fmtT(e.T)+(e.est?" · momento estimado":"")+(e.estEng?" · cantidad de motores estimada":"")+(e.chg?" · motores "+e.chg:"");
+    $("d-text").textContent=e.d;
+    const ol=$("events");
+    Array.from(ol.children).forEach((li,i)=>{li.className=i<idx?"done":i===idx?"now":"";});
+    const cur=ol.children[Math.max(0,idx)];if(cur)ol.scrollTop=cur.offsetTop-ol.clientHeight/2+cur.offsetHeight/2;
+  }
+  $("scale-note").textContent=exag?"Vehículo ampliado":"A escala";
+  if(document.activeElement!==$("scrub"))$("scrub").value=Math.round(t/sc.dur*1000);
+  $("play").textContent=playing?"Pausar":t>=sc.dur?"Repetir":"Reproducir";
+}
+function buildEvents(){
+  const ol=$("events");ol.textContent="";
+  sc.events.forEach(e=>{
+    const li=document.createElement("li"),b=document.createElement("button"),tm=document.createElement("time"),vh=document.createElement("span"),nm=document.createElement("span");
+    b.type="button";tm.textContent=fmtT(e.T);
+    vh.className="veh "+e.v.toLowerCase();vh.textContent=e.v==="BS"?"B+S":e.v;
+    vh.title=e.v==="B"?"Booster":e.v==="S"?"Ship":"Booster y Ship";
+    nm.textContent=e.n;
+    if(e.est||e.estEng){const em=document.createElement("em");em.textContent="est.";nm.append(em);}
+    b.append(tm,vh,nm);
+    b.addEventListener("click",()=>{t=Math.min(sc.dur,e.a+0.001);draw();});
+    li.append(b);ol.append(li);
+  });
+  evIdx=-2;
+}
+function setScenario(name){
+  sc=SC[name];t=0;playing=false;drift=0;
+  $("tab-booster").setAttribute("aria-pressed",name==="booster");
+  $("tab-ship").setAttribute("aria-pressed",name==="ship");
+  $("tocatch").textContent=sc.jumpLabel;
+  buildEvents();draw();
+}
+function toggle(){
+  if(!playing&&t>=sc.dur)t=0;
+  playing=!playing;last=0;draw();
+}
+$("tab-booster").addEventListener("click",()=>setScenario("booster"));
+$("tab-ship").addEventListener("click",()=>setScenario("ship"));
+$("play").addEventListener("click",toggle);
+$("restart").addEventListener("click",()=>{t=0;drift=0;draw();});
+$("tocatch").addEventListener("click",()=>{t=Math.max(0,aOfT(sc,sc.jump)-1.5);playing=true;last=0;draw();});
+$("speed").addEventListener("change",e=>{speed=parseFloat(e.target.value)||1;draw();});
+$("scrub").addEventListener("input",e=>{t=e.target.value/1000*sc.dur;draw();});
+document.addEventListener("keydown",e=>{
+  if(e.code==="Space"&&(e.target===document.body||e.target===cv)){e.preventDefault();toggle();}
+});
+
+function loop(now){
+  const dt=last?Math.min(0.05,(now-last)/1000):0;last=now;wall=now/1000;
+  if(playing){
+    const st=sample(sc,t);
+    drift+=dt*speed*(st.v/27000)*0.03*sstep(20000,70000,st.y);
+    t+=dt*speed;
+    if(t>=sc.dur){t=sc.dur;playing=false;}
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+
+buildEvents();
+if(window.ResizeObserver){const ro=new ResizeObserver(resize);ro.observe(cv);ro.observe(tl);}
+else window.addEventListener("resize",resize);
+resize();
+if(!reduce)playing=true;
+draw();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
